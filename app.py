@@ -1,230 +1,202 @@
+# app.py
+import io
+import unicodedata
+from typing import Dict
+
 import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
-import numpy as np
-import io
-from torchvision import models, transforms
+
+# ---- Opcional: si usas torch.cuda, puedes setear device = "cuda" ----
 import torch
-import torch.nn.functional as F
-import requests
-import clip
-
-f
 
 # ------------------------------
-# CONFIGURACIÓN GENERAL DE LA PÁGINA
+# CONFIG GENERAL
 # ------------------------------
-st.set_page_config(
-    page_title="MediScan AI - Análisis Médico",
-    page_icon="🧠",
-    layout="centered"
-)
+st.set_page_config(page_title="MediScan AI", page_icon="🧠", layout="centered")
 
-# ------------------------------
-# ESTILOS PERSONALIZADOS CON CSS 
-# ------------------------------
 st.markdown("""
     <style>
-        .stApp {
-            background-color: #F8F9FA;
-            color: #343a40;
-            padding-top: 0 !important;
-        }
-        .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-            max-width: 700px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        h1, h2, h3 {
-            color: #007bff;
-            text-align: center;
-            font-weight: 600;
-        }
-        .stMarkdown p {
-            color: #6c757d !important;
-            text-align: center;
-        }
-        .stFileUploader > div:first-child {
-            background-color: #FFFFFF;
-            border: 2px dashed #CED4DA;
-            border-radius: 10px;
-            padding: 30px;
-            text-align: center;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
-        }
-        .stFileUploader [data-testid="stFileUploadDropzone"] svg {
-            color: #007bff;
-            font-size: 3em;
-            margin-bottom: 15px;
-        }
-        .stFileUploader button {
-            background-color: #007bff;
-            color: #ffffff;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
-        }
-        [data-testid="stAlert"] {
-            display: block; 
-        }
-        [data-testid="stImage"] {
-            max-width: 65%;
-            margin-left: auto;
-            margin-right: auto;
-            border: 1px solid #E9ECEF;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        .stButton button[kind="primary"] {
-            background-color: #007bff;
-            color: #FFFFFF;
-            border: none;
-            border-radius: 5px;
-            padding: 10px 20px;
-            font-size: 1.1em;
-            margin-top: 20px;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 50px;
-            color: #ADB5BD;
-            font-size: 0.85rem;
-        }
-        .stEmpty {
-            display: none;
+        .stApp { background-color: #F8F9FA; color: #343a40; }
+        .block-container { max-width: 820px; }
+        h1, h2, h3 { color: #007bff; text-align: center; font-weight: 600; }
+        [data-testid="stImage"] img { border-radius: 8px; border: 1px solid #e9ecef; }
+        .metric-card{
+            border:1px solid #e9ecef; border-radius:12px; padding:16px; background:#fff;
+            box-shadow:0 1px 4px rgba(0,0,0,.06); text-align:center;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# Cargar modelo CLIP una sola vez
+st.markdown("<h1>MediScan AI</h1>", unsafe_allow_html=True)
+st.caption("Sube una imagen: 1) CLIP valida que sea ecografía → 2) YOLO identifica el tipo → 3) YOLO específico clasifica la categoría.")
+
+# ==============================
+# CLIP: verificador de ECOGRAFÍA
+# ==============================
+try:
+    import clip  # pip install git+https://github.com/openai/CLIP.git
+except Exception as e:
+    st.error(f"No se pudo importar CLIP. Instala con: pip install git+https://github.com/openai/CLIP.git\nDetalle: {e}")
+    st.stop()
+
+DEVICE = "cpu"  # cambia a "cuda" si tienes GPU y torch reconoce cuda
+
 @st.cache_resource
 def load_clip_model():
-    model, preprocess = clip.load("ViT-B/32", device="cpu")
+    model, preprocess = clip.load("ViT-B/32", device=DEVICE)
     return model, preprocess
 
 clip_model, clip_preprocess = load_clip_model()
 
-def is_ultrasound_image(image: Image.Image) -> bool:
-    # Convertir a RGB siempre
-    if image.mode != "RGB":
-        image = image.convert("RGB")
+ULTRASOUND_TEXTS = [
+    "an ultrasound image",
+    "a medical ultrasound scan",
+    "a liver ultrasound",
+    "a kidney ultrasound",
+    "a breast ultrasound",
+    "a medical imaging scan",
+    # negativos para contraste
+    "a normal photo",
+    "a cat",
+    "a dog",
+    "a landscape",
+]
 
-    # Preprocesar imagen
-    image_input = clip_preprocess(image).unsqueeze(0)
+@st.cache_data
+def _clip_tokens():
+    return clip.tokenize(ULTRASOUND_TEXTS).to(DEVICE)
 
-    # Definir los textos para comparar
-    text_prompts = [
-        "an ultrasound image",
-        "a liver ultrasound",
-        "a medical scan",
-        "a radiology image",
-        "a cat",
-        "a person",
-        "a dog",
-        "a landscape",
-        "a normal photo"
-    ]
+def is_ultrasound_image(pil_img: Image.Image, threshold: float = 0.45) -> bool:
+    """
+    Retorna True si CLIP considera que la imagen se parece más a prompts de ecografía.
+    Umbral simple sobre la probabilidad softmax combinada de los prompts 'ultrasound'.
+    """
+    if pil_img.mode != "RGB":
+        pil_img = pil_img.convert("RGB")
 
-    text_tokens = clip.tokenize(text_prompts)
+    image_input = clip_preprocess(pil_img).unsqueeze(0).to(DEVICE)
+    text_tokens = _clip_tokens()
 
     with torch.no_grad():
-        image_features = clip_model.encode_image(image_input)
-        text_features = clip_model.encode_text(text_tokens)
+        img_feat = clip_model.encode_image(image_input)
+        txt_feat = clip_model.encode_text(text_tokens)
+        # similitudes normalizadas → softmax
+        probs = (img_feat @ txt_feat.T).softmax(dim=-1).squeeze(0)  # [N_TEXT]
 
-        # Calcular similitud entre la imagen y cada texto
-        similarities = (image_features @ text_features.T).softmax(dim=-1)
-        best_match = torch.argmax(similarities, dim=-1).item()
+    # pesos: suma de probabilidades de los prompts pro-ultrasonido (índices 0..5)
+    prob_ultra = float(probs[:6].sum().item())
+    return prob_ultra >= threshold
 
-    # Si la imagen se parece más a los primeros 4 prompts (ecografía, scan, etc.)
-    return best_match in [0, 1, 2, 3]
+# ==============================
+# YOLO: identificación + modelos
+# ==============================
+TYPE_MODEL_PATH = "modelo_identificacion_eco_best.pt"
+ORGAN_MODELS: Dict[str, str] = {
+    "higado": "best_fibrosis_y11s.pt",
+    "rinon": "kidney_normal_stone_best.pt",  # rinon/riñon
+    "mamaria": "mamarias_best.pt",
+}
 
-# ------------------------------
-# CARGAR MODELO YOLO
-# ------------------------------
+def _strip_accents(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn").lower().strip()
+
 @st.cache_resource
-def load_model():
+def load_yolo(path: str) -> YOLO:
+    return YOLO(path)
+
+def predict_top1(model: YOLO, pil_image: Image.Image):
+    res = model(pil_image)[0]
+    if not hasattr(res, "probs") or res.probs is None:
+        raise RuntimeError("El modelo no devolvió probabilidades de clasificación (probs).")
+    idx = int(res.probs.top1)
+    conf = float(res.probs.top1conf)
+    name = model.names[idx] if hasattr(model, "names") else str(idx)
+    return idx, name, conf
+
+def map_type_name(raw_name: str) -> str:
+    n = _strip_accents(raw_name)
+    if any(k in n for k in ["higado", "liver"]): return "higado"
+    if any(k in n for k in ["rinon", "riñon", "kidney"]): return "rinon"
+    if any(k in n for k in ["mamaria", "mama", "breast"]): return "mamaria"
+    return n  # desconocido tal cual (sin acentos)
+
+# Carga modelos cacheados
+try:
+    type_model = load_yolo(TYPE_MODEL_PATH)
+except Exception as e:
+    st.error(f"❌ No se pudo cargar el modelo de identificación: {TYPE_MODEL_PATH}\nDetalle: {e}")
+    st.stop()
+
+organ_loaded: Dict[str, YOLO] = {}
+for k, p in ORGAN_MODELS.items():
     try:
-        model_loaded = YOLO("best.pt")
-        return model_loaded
+        organ_loaded[k] = load_yolo(p)
     except Exception as e:
-        st.error(f"Error al cargar el modelo 'best.pt'. Detalle: {e}")
-        return None
+        st.warning(f"⚠️ No se pudo cargar el modelo '{k}': {p}\nDetalle: {e}")
 
-model = load_model()
-if model:
-    class_names = model.names
-else:
-    class_names = {0: 'F0', 1: 'F1', 2: 'F2', 3: 'F3', 4: 'F4'}
+# ==============================
+# UI
+# ==============================
+st.markdown("### Cargar imagen")
+uploaded = st.file_uploader("Formatos: JPG, PNG", type=["jpg", "jpeg", "png"])
 
-# ------------------------------
-# INTERFAZ PRINCIPAL
-# ------------------------------
-col1, col2, col3 = st.columns([1,2,1])
-with col2:
-    st.markdown('<p style="text-align:center;"><img src="https://raw.githubusercontent.com/streamlit/streamlit/develop/docs/static/logo_icon_dark.svg" width="50"></p>', unsafe_allow_html=True)
-    st.markdown("<h1>MediScan AI</h1>", unsafe_allow_html=True)
-    st.markdown("<p>Plataforma Avanzada de Análisis de Imágenes Médicas</p>", unsafe_allow_html=True)
-st.markdown("---")
+if uploaded:
+    img = Image.open(io.BytesIO(uploaded.getvalue())).convert("RGB")
+    st.image(img, caption="Vista previa", use_container_width=True)
 
-st.markdown('<p style="font-size: 1.5em; font-weight: 600; text-align: center; color: #343a40;">Cargar Imagen Médica</p>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; color: #6c757d;">Arrastra y suelta tu imagen aquí, o haz clic para buscar</p>', unsafe_allow_html=True)
-
-uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"], key="medical_image_uploader")
-st.markdown('<p style="text-align: center; color: #ADB5BD;">Formatos compatibles: JPG, PNG</p>', unsafe_allow_html=True)
-
-if uploaded_file is not None:
-    image = Image.open(io.BytesIO(uploaded_file.getvalue()))
-    st.image(image, use_container_width=True)
-
-    if st.button('Analizar imagen', type="primary", use_container_width=True):
-        with st.spinner('Analizando la imagen...'):
-            
-            # 🔍 Verificar si parece ecografía médica antes de usar YOLO
-            if not is_ultrasound_image(image):
-                st.warning("⚠️ La imagen no parece ser una ecografía médica. Por favor sube una imagen médica válida.")
+    if st.button("Analizar imagen", type="primary"):
+        with st.spinner("Verificando con CLIP si es ecografía…"):
+            if not is_ultrasound_image(img):
+                st.warning("⚠️ La imagen no parece ser una **ecografía** según CLIP. Sube una ecografía válida.")
                 st.stop()
-            
-            if model is None:
-                st.error("No se puede realizar el análisis: El modelo YOLO no se cargó correctamente.")
-            else:
-                try:
-                    results = model(image)
-                    pred = results[0]
 
-                    if hasattr(pred, 'probs'):
-                        predicted_class_index = pred.probs.top1
-                        confidence = pred.probs.top1conf.item() * 100
-                        diagnosis = class_names[predicted_class_index]
+        with st.spinner("Identificando tipo de ecografía…"):
+            try:
+                _, raw_type, type_conf = predict_top1(type_model, img)
+                organ_key = map_type_name(raw_type)
+            except Exception as e:
+                st.error(f"Error al identificar tipo de ecografía: {e}")
+                st.stop()
 
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.markdown(f'<p style="color:#343a40; font-size: 3.5em; font-weight: bold; margin: 0; text-align: center;">{diagnosis}</p>', unsafe_allow_html=True)
-                            st.markdown(f'<p style="color:#6c757d; font-size: 1em; margin: 0; text-align: center;">Grado de fibrosis</p>', unsafe_allow_html=True)
-                        with col2:
-                            st.markdown(f'<p style="color:#343a40; font-size: 3.5em; font-weight: bold; margin: 0; text-align: center;">{confidence:.2f}%</p>', unsafe_allow_html=True)
-                            st.markdown(f'<p style="color:#6c757d; font-size: 1em; margin: 0; text-align: center;">Puntuación de confianza</p>', unsafe_allow_html=True)
+        mdl = organ_loaded.get(organ_key)
+        if mdl is None:
+            st.error(
+                f"No hay modelo específico cargado para el tipo detectado: **{organ_key}** "
+                f"(clase original: '{raw_type}'). Revisa nombres y rutas."
+            )
+            st.stop()
 
-                        st.markdown("<hr style='border: 1px solid #E9ECEF; margin: 20px 0;'>", unsafe_allow_html=True) 
-                        if diagnosis in ['F0', 'F1']:
-                            st.success(f"**{diagnosis}** indica un riesgo bajo o nulo de fibrosis avanzada.")
-                        elif diagnosis in ['F2', 'F3']:
-                            st.warning(f"**{diagnosis}**: Fibrosis moderada a severa. Se recomienda seguimiento médico.")
-                        elif diagnosis == 'F4':
-                            st.error(f"**F4 (Cirrosis)**: Atención médica inmediata recomendada.")
-                    else:
-                        st.warning("El modelo no devolvió un resultado de clasificación válido.")
+        with st.spinner("Clasificando categoría específica…"):
+            try:
+                _, diag_name, diag_conf = predict_top1(mdl, img)
+            except Exception as e:
+                st.error(f"Error al clasificar con el modelo específico ({organ_key}): {e}")
+                st.stop()
 
-                except Exception as e:
-                    st.error(f"Error al procesar la imagen: {e}")
+        # Resultado
+        st.markdown("## Resultado")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(
+                '<div class="metric-card"><div>Tipo de ecografía</div>'
+                f'<h2 style="margin:6px 0">{organ_key.upper()}</h2>'
+                f'<div>Confianza (tipo): {type_conf*100:.1f}%</div></div>', unsafe_allow_html=True
+            )
+        with c2:
+            st.markdown(
+                '<div class="metric-card"><div>Categoría / diagnóstico</div>'
+                f'<h2 style="margin:6px 0">{diag_name}</h2>'
+                f'<div>Confianza (categoría): {diag_conf*100:.1f}%</div></div>', unsafe_allow_html=True
+            )
 
-# ------------------------------
-# PIE DE PÁGINA
-# ------------------------------
-st.markdown("""
-    <div class="footer">
-        Este es un análisis generado por IA. Consulte siempre con profesionales de la salud calificados.
-    </div>
-""", unsafe_allow_html=True)
+        st.markdown("---")
+        if organ_key == "higado":
+            st.caption("Nota hígado: si tu modelo usa F0–F4, valores mayores indican fibrosis más avanzada.")
+        elif organ_key == "rinon":
+            st.caption("Nota riñón: categorías típicas entrenadas como *normal* / *cálculo (stone)*.")
+        elif organ_key == "mamaria":
+            st.caption("Nota mamaria: categorías según tu entrenamiento (p. ej., benigno/maligno).")
+
+st.markdown("<hr>", unsafe_allow_html=True)
+st.caption("Apoyo con IA. No reemplaza el criterio médico profesional.")
