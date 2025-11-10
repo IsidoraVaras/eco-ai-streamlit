@@ -319,9 +319,22 @@ if uploaded:
     with st.expander("Ajustes CLIP (avanzado)"):
         c1, c2 = st.columns(2)
         with c1:
-            pos_thr = st.slider("Umbral ecografia", 0.3, 0.95, 0.58, 0.01)
+            pos_thr = st.slider(
+                "Umbral ecografia",
+                0.3, 0.95, 0.58, 0.01,
+                help="Valor minimo de probabilidad para aceptar que la imagen es una ecografia. Si rechaza ecografias validas, baja un poco este valor."
+            )
         with c2:
-            margin = st.slider("Margen vs no-eco", 0.0, 0.3, 0.08, 0.01)
+            margin = st.slider(
+                "Margen vs no-eco",
+                0.0, 0.3, 0.08, 0.01,
+                help="Diferencia minima entre 'Prob. ecografia' y 'Prob. no-ecografia' para evitar casos ambiguos. Si acepta imagenes que no son ecografias, sube este margen."
+            )
+        st.markdown(
+            "- Si CLIP rechaza ecografias validas: baja el umbral (p.ej., 0.58 -> 0.54) o reduce el margen (0.08 -> 0.05).\n"
+            "- Si CLIP acepta imagenes que no son ecografias: sube el umbral (0.62-0.68) y/o aumenta el margen (0.10-0.15).\n"
+            "- Valores recomendados iniciales: umbral 0.58 y margen 0.08."
+        )
 
     if st.button("Analizar imagen", type="primary"):
         with st.spinner("Verificando con CLIP si es ecografia..."):
@@ -397,5 +410,3 @@ if uploaded:
 
 st.markdown("<hr>", unsafe_allow_html=True)
 st.caption("Apoyo con IA. No reemplaza el criterio medico profesional.")
-
-
