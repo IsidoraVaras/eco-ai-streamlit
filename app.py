@@ -16,21 +16,17 @@ st.set_page_config(page_title="MediScan AI", page_icon="MS", layout="centered")
 st.markdown(
     """
     <style>
-        .stApp { background-color: #F8F9FA; color: #343a40; }
-        .block-container { max-width: 860px; }
-        h1, h2, h3 { color: #007bff; text-align: center; font-weight: 600; }
-        [data-testid="stImage"] img { border-radius: 8px; border: 1px solid #e9ecef; }
-        .metric-card{
-            border:1px solid #e9ecef; border-radius:12px; padding:16px; background:#fff;
-            box-shadow:0 1px 4px rgba(0,0,0,.06); text-align:center;
-        }
-    </style>
+        .stApp { background: linear-gradient(180deg, #f9fbff 0%, #f4f6fb 100%); color: #2f3640; }
+        .block-container { max-width: 900px; padding-top: 1.2rem; }
+        h1, h2, h3 { color: #5b8def; text-align: center; font-weight: 700; }
+        [data-testid="stImage"] img { border-radius: 10px; border: 1px solid #e9ecef; box-shadow: 0 8px 24px rgba(0,0,0,.06); max-height: 420px; object-fit: contain; }
+        .metric-card{ border:1px solid #e9ecef; border-radius:14px; padding:16px; background:#fff; box-shadow:0 4px 18px rgba(0,0,0,.07); text-align:center; }
+    .stButton>button { background: linear-gradient(90deg, #5b8def 0%, #8a5bff 100%); color:#fff; border:0; padding:.6rem 1rem; border-radius:10px; box-shadow:0 6px 14px rgba(91,141,239,.35);} .stButton>button:hover{filter:brightness(1.03); transform: translateY(-1px);} </style>
     """,
     unsafe_allow_html=True,
 )
 
 st.markdown("<h1>MediScan AI</h1>", unsafe_allow_html=True)
-st.caption("Flujo: 1) CLIP verifica ecografia -> 2) YOLO detecta tipo -> 3) YOLO especifico clasifica categoria.")
 
 # ==============================
 # CLIP: verificador de ECOGRAFIA / NO-ECOGRAFIA + grupos
@@ -45,7 +41,6 @@ except Exception as e:
     st.stop()
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-st.caption(f"Dispositivo para modelos: {DEVICE}")
 
 @st.cache_resource
 def load_clip_model():
@@ -319,14 +314,27 @@ if uploaded:
     except Exception:
         st.error("El archivo seleccionado no parece ser una imagen compatible. Prueba con JPG/PNG/BMP/TIFF/WEBP.")
         st.stop()
-    st.image(img, caption="Vista previa", use_container_width=True)
+    st.image(img, caption="Vista previa", use_container_width=False, width=420)
 
     with st.expander("Ajustes CLIP (avanzado)"):
         c1, c2 = st.columns(2)
         with c1:
-            pos_thr = st.slider("Umbral ecografia", 0.3, 0.95, 0.58, 0.01)
+            pos_thr = st.slider(
+                "Umbral ecografia",
+                0.3, 0.95, 0.58, 0.01,
+                help="Valor minimo de probabilidad para aceptar que la imagen es una ecografia. Si rechaza ecografias validas, baja un poco este valor."
+            )
         with c2:
-            margin = st.slider("Margen vs no-eco", 0.0, 0.3, 0.08, 0.01)
+            margin = st.slider(
+                "Margen vs no-eco",
+                0.0, 0.3, 0.08, 0.01,
+                help="Diferencia minima entre 'Prob. ecografia' y 'Prob. no-ecografia' para evitar casos ambiguos. Si acepta imagenes que no son ecografias, sube este margen."
+            )
+        st.markdown(
+            "- Si CLIP rechaza ecografias validas: baja el umbral (p.ej., 0.58 -> 0.54) o reduce el margen (0.08 -> 0.05).\n"
+            "- Si CLIP acepta imagenes que no son ecografias: sube el umbral (0.62-0.68) y/o aumenta el margen (0.10-0.15).\n"
+            "- Valores recomendados iniciales: umbral 0.58 y margen 0.08."
+        )
 
     if st.button("Analizar imagen", type="primary"):
         with st.spinner("Verificando con CLIP si es ecografia..."):
@@ -399,14 +407,6 @@ if uploaded:
                 f'<div>Confianza (categoria): {diag_conf*100:.1f}%</div></div>',
                 unsafe_allow_html=True,
             )
-
-        st.markdown("---")
-        if organ_key == "higado":
-            st.caption("Nota higado: si tu modelo usa F0-F4, valores mayores indican fibrosis mas avanzada.")
-        elif organ_key == "rinon":
-            st.caption("Nota rinon: categorias tipicas entrenadas como normal / calculo (stone).")
-        elif organ_key == "mamaria":
-            st.caption("Nota mamaria: categorias segun tu entrenamiento (p. ej., benigno/maligno).")
 
 st.markdown("<hr>", unsafe_allow_html=True)
 st.caption("Apoyo con IA. No reemplaza el criterio medico profesional.")
