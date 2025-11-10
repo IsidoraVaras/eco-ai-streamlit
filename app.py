@@ -310,10 +310,15 @@ for k, p in ORGAN_MODELS.items():
 # UI
 # ==============================
 st.markdown("### Cargar imagen")
-uploaded = st.file_uploader("Formatos: JPG, PNG", type=["jpg", "jpeg", "png"])
+uploaded = st.file_uploader("Selecciona una imagen (JPG/PNG/BMP/TIFF/WEBP)", type=None)
 
 if uploaded:
-    img = Image.open(io.BytesIO(uploaded.getvalue())).convert("RGB")
+    try:
+        raw = uploaded.getvalue()
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception:
+        st.error("El archivo seleccionado no parece ser una imagen compatible. Prueba con JPG/PNG/BMP/TIFF/WEBP.")
+        st.stop()
     st.image(img, caption="Vista previa", use_container_width=True)
 
     with st.expander("Ajustes CLIP (avanzado)"):
