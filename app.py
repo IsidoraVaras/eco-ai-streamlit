@@ -20,8 +20,9 @@ st.markdown(
         .block-container { max-width: 900px; padding-top: 1.2rem; }
         h1, h2, h3 { color: #5b8def; text-align: center; font-weight: 700; }
         [data-testid="stImage"] img { border-radius: 10px; border: 1px solid #e9ecef; box-shadow: 0 8px 24px rgba(0,0,0,.06); max-height: 420px; object-fit: contain; }
-        .metric-card{ border:1px solid #e9ecef; border-radius:14px; padding:16px; background:#fff; box-shadow:0 4px 18px rgba(0,0,0,.07); text-align:center; }
-    .stButton>button { background: linear-gradient(90deg, #5b8def 0%, #8a5bff 100%); color:#fff; border:0; padding:.6rem 1rem; border-radius:10px; box-shadow:0 6px 14px rgba(91,141,239,.35);} .stButton>button:hover{filter:brightness(1.03); transform: translateY(-1px);} </style>
+        .metric-card{ border:1px solid #d6e4ff; border-radius:14px; padding:18px 18px 14px; background:linear-gradient(145deg,#ffffff 0%,#f0f4ff 100%); box-shadow:0 4px 18px rgba(0,0,0,.07); text-align:center; }
+        .metric-card h2{ color:#343a7a; font-weight:700; }
+        .stButton>button { background: linear-gradient(90deg, #5b8def 0%, #8a5bff 100%); color:#fff; border:0; padding:.6rem 1rem; border-radius:10px; box-shadow:0 6px 14px rgba(91,141,239,.35);} .stButton>button:hover{filter:brightness(1.03); transform: translateY(-1px);} </style>
     """,
     unsafe_allow_html=True,
 )
@@ -305,7 +306,7 @@ for k, p in ORGAN_MODELS.items():
 # UI
 # ==============================
 st.markdown("### Cargar imagen")
-uploaded = st.file_uploader("Selecciona una imagen (JPG/PNG/BMP/TIFF/WEBP)", type=None)
+uploaded = st.file_uploader("Selecciona una imagen", type=None)
 
 if uploaded:
     try:
