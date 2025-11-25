@@ -7,6 +7,7 @@ import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
 import torch
+import numpy as np
 
 # ------------------------------
 # CONFIG GENERAL
@@ -251,12 +252,17 @@ def is_ultrasound_image(pil_img: Image.Image, pos_threshold: float = 0.58, margi
 # ==============================
 # YOLO: identificacion + modelos
 # ==============================
-TYPE_MODEL_PATH = "modelo_identificacion_eco_best.pt"
+TYPE_MODEL_PATH = "modelo_identificacion_eco_best.pt"  # tipo de ecografia (mama / higado / rinon)
+
+# Modelos de clasificacion por organo
 ORGAN_MODELS: Dict[str, str] = {
     "higado": "best_fibrosis_y11s.pt",
     "rinon": "kidney_normal_stone_best.pt",
-    "mamaria": "mamarias_best.pt",
+    "mamaria": "clasificacion_mama.pt",  # debes colocar este .pt en la carpeta del app
 }
+
+# Modelo especifico de segmentacion de mama
+MAMA_SEG_MODEL_PATH = "segmentacion_mama.pt"  # modelo YOLO de segmentacion de lesiones de mama
 
 
 def _strip_accents(s: str) -> str:
@@ -288,6 +294,49 @@ def map_type_name(raw_name: str) -> str:
         return "mamaria"
     return n
 
+
+def apply_segmentation_overlay(pil_img: Image.Image, model: YOLO, color=(180, 70, 190), alpha: float = 0.45) -> Image.Image:
+    """Ejecuta un modelo YOLO de segmentacion y superpone la mascara sobre la ecografia.
+
+    color: color RGB de la mascara (por defecto morado suave).
+    alpha: nivel de transparencia de la mascara.
+    """
+    if pil_img.mode != "RGB":
+        pil_img = pil_img.convert("RGB")
+
+    res = model(pil_img)[0]
+    masks = getattr(res, "masks", None)
+    if masks is None or getattr(masks, "data", None) is None:
+        raise RuntimeError("El modelo de segmentacion de mama no devolvio mascaras.")
+
+    mask_tensor = masks.data  # [N, H, W]
+    if mask_tensor.ndim == 3:
+        mask = mask_tensor.max(dim=0).values
+    else:
+        mask = mask_tensor
+
+    mask = mask.float()
+    mask = mask.cpu().numpy()
+    if mask.max() > 0:
+        mask = mask / mask.max()
+
+    img_w, img_h = pil_img.size
+    if mask.shape != (img_h, img_w):
+        mask_img = Image.fromarray((mask * 255).astype("uint8"))
+        mask_img = mask_img.resize((img_w, img_h), resample=Image.NEAREST)
+        mask = np.array(mask_img) / 255.0
+
+    base = np.array(pil_img).astype("float32")
+    overlay = np.zeros_like(base)
+    overlay[..., 0] = color[0]
+    overlay[..., 1] = color[1]
+    overlay[..., 2] = color[2]
+
+    mask_3 = np.stack([mask] * 3, axis=-1)
+    out = base * (1.0 - alpha * mask_3) + overlay * (alpha * mask_3)
+    out = np.clip(out, 0, 255).astype("uint8")
+    return Image.fromarray(out)
+
 # Carga modelos cacheados
 try:
     type_model = load_yolo(TYPE_MODEL_PATH)
@@ -301,6 +350,13 @@ for k, p in ORGAN_MODELS.items():
         organ_loaded[k] = load_yolo(p)
     except Exception as e:
         st.warning(f"No se pudo cargar el modelo '{k}': {p}\nDetalle: {e}")
+
+# Modelo de segmentacion de mama (opcional)
+try:
+    mama_seg_model = load_yolo(MAMA_SEG_MODEL_PATH)
+except Exception as e:
+    mama_seg_model = None
+    st.warning(f"No se pudo cargar el modelo de segmentacion de mama: {MAMA_SEG_MODEL_PATH}\nDetalle: {e}")
 
 # ==============================
 # UI
@@ -384,6 +440,7 @@ if uploaded:
             )
             st.stop()
 
+        # Clasificacion por organo
         with st.spinner("Clasificando categoria especifica..."):
             try:
                 _, diag_name, diag_conf = predict_top1(mdl, img)
@@ -391,23 +448,37 @@ if uploaded:
                 st.error(f"Error al clasificar con el modelo especifico ({organ_key}): {e}")
                 st.stop()
 
-        # Resultado
+        # Resultado general
         st.markdown("## Resultado")
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(
-                '<div class="metric-card"><div>Tipo de ecografia</div>'
+                '<div class="metric-card"><div>Tipo de ecografía</div>'
                 f'<h2 style="margin:6px 0">{organ_key.upper()}</h2>'
-                f'<div>Confianza (tipo): {type_conf*100:.1f}%</div></div>',
+                f'<div>Confianza: {type_conf*100:.1f}%</div></div>',
                 unsafe_allow_html=True,
             )
         with c2:
             st.markdown(
-                '<div class="metric-card"><div>Categoria / diagnostico</div>'
+                '<div class="metric-card"><div>Categoria</div>'
                 f'<h2 style="margin:6px 0">{diag_name}</h2>'
-                f'<div>Confianza (categoria): {diag_conf*100:.1f}%</div></div>',
+                f'<div>Confianza: {diag_conf*100:.1f}%</div></div>',
                 unsafe_allow_html=True,
             )
+
+        # Flujo especifico para ecografia de mama: clasificacion + segmentacion
+        if organ_key == "mamaria" and mama_seg_model is not None:
+            st.markdown("### Clasificacion y segmentacion")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.image(img, caption="Imagen original", use_container_width=False, width=420)
+            with col2:
+                try:
+                    with st.spinner("Generando segmentacion de la lesion en mama..."):
+                        overlay_img = apply_segmentation_overlay(img, mama_seg_model)
+                    st.image(overlay_img, caption="Segmentación", use_container_width=False, width=420)
+                except Exception as e:
+                    st.error(f"El modelo de segmentacion de mama no pudo generar la mascara: {e}")
 
 st.markdown("<hr>", unsafe_allow_html=True)
 st.caption("Apoyo con IA. No reemplaza el criterio medico profesional.")
