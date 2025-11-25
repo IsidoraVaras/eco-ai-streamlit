@@ -295,6 +295,14 @@ def map_type_name(raw_name: str) -> str:
     return n
 
 
+def pretty_label(text: str) -> str:
+    """Devuelve el texto con solo la primera letra en mayuscula."""
+    t = str(text).strip().replace("_", " ")
+    if not t:
+        return t
+    return t[0].upper() + t[1:].lower()
+
+
 def apply_segmentation_overlay(pil_img: Image.Image, model: YOLO, color=(180, 70, 190), alpha: float = 0.45) -> Image.Image:
     """Ejecuta un modelo YOLO de segmentacion y superpone la mascara sobre la ecografia.
 
@@ -454,14 +462,14 @@ if uploaded:
         with c1:
             st.markdown(
                 '<div class="metric-card"><div>Tipo de ecografía</div>'
-                f'<h2 style="margin:6px 0">{organ_key.upper()}</h2>'
+                f'<h2 style="margin:6px 0">{pretty_label(organ_key)}</h2>'
                 f'<div>Confianza: {type_conf*100:.1f}%</div></div>',
                 unsafe_allow_html=True,
             )
         with c2:
             st.markdown(
                 '<div class="metric-card"><div>Categoria</div>'
-                f'<h2 style="margin:6px 0">{diag_name}</h2>'
+                f'<h2 style="margin:6px 0">{pretty_label(diag_name)}</h2>'
                 f'<div>Confianza: {diag_conf*100:.1f}%</div></div>',
                 unsafe_allow_html=True,
             )
@@ -482,3 +490,4 @@ if uploaded:
 
 st.markdown("<hr>", unsafe_allow_html=True)
 st.caption("Apoyo con IA. No reemplaza el criterio medico profesional.")
+
