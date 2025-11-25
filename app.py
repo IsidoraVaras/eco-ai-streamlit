@@ -410,16 +410,20 @@ if uploaded:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(
-                '<div class="metric-card"><div>Prob. ecografia</div>'
-                f'<h2 style="margin:6px 0">{info["pos_prob"]*100:.1f}%</h2>'
-                f'<div>Umbral: {pos_thr*100:.0f}%</div></div>',
+                (
+                    '<div class="metric-card"><div>Prob. ecografia</div>'
+                    f'<h2 style="margin:6px 0">{info["pos_prob"]*100:.1f}%</h2>'
+                    f'<div>Umbral: {pos_thr*100:.0f}%</div></div>'
+                ).replace('.', ','),
                 unsafe_allow_html=True,
             )
         with c2:
             st.markdown(
-                '<div class="metric-card"><div>Prob. no-ecografia</div>'
-                f'<h2 style="margin:6px 0">{info["neg_prob"]*100:.1f}%</h2>'
-                f'<div>Margen requerido: {margin*100:.0f}%</div></div>',
+                (
+                    '<div class="metric-card"><div>Prob. no-ecografia</div>'
+                    f'<h2 style="margin:6px 0">{info["neg_prob"]*100:.1f}%</h2>'
+                    f'<div>Margen requerido: {margin*100:.0f}%</div></div>'
+                ).replace('.', ','),
                 unsafe_allow_html=True,
             )
 
@@ -463,14 +467,14 @@ if uploaded:
             st.markdown(
                 '<div class="metric-card"><div>Tipo de ecografía</div>'
                 f'<h2 style="margin:6px 0">{pretty_label(organ_key)}</h2>'
-                f'<div>Confianza: {type_conf*100:.1f}%</div></div>',
+                f'<div>Confianza: {type_conf*100:.1f}%</div></div>'.replace('.', ','),
                 unsafe_allow_html=True,
             )
         with c2:
             st.markdown(
                 '<div class="metric-card"><div>Categoria</div>'
                 f'<h2 style="margin:6px 0">{pretty_label(diag_name)}</h2>'
-                f'<div>Confianza: {diag_conf*100:.1f}%</div></div>',
+                f'<div>Confianza: {diag_conf*100:.1f}%</div></div>'.replace('.', ','),
                 unsafe_allow_html=True,
             )
 
@@ -490,4 +494,7 @@ if uploaded:
 
 st.markdown("<hr>", unsafe_allow_html=True)
 st.caption("Apoyo con IA. No reemplaza el criterio medico profesional.")
+
+
+
 
