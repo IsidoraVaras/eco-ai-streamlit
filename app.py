@@ -453,7 +453,7 @@ if uploaded:
             st.stop()
 
         # Clasificacion por organo
-        with st.spinner("Clasificando categoria especifica..."):
+        with st.spinner("Clasificando categoría específica..."):
             try:
                 _, diag_name, diag_conf = predict_top1(mdl, img)
             except Exception as e:
@@ -472,7 +472,7 @@ if uploaded:
             )
         with c2:
             st.markdown(
-                '<div class="metric-card"><div>Categoria</div>'
+                '<div class="metric-card"><div>Categoría</div>'
                 f'<h2 style="margin:6px 0">{pretty_label(diag_name)}</h2>'
                 f'<div>Confianza: {diag_conf*100:.1f}%</div></div>'.replace('.', ','),
                 unsafe_allow_html=True,
@@ -480,17 +480,17 @@ if uploaded:
 
         # Flujo especifico para ecografia de mama: clasificacion + segmentacion
         if organ_key == "mamaria" and mama_seg_model is not None:
-            st.markdown("### Clasificacion y segmentacion")
+            st.markdown("### Clasificación y segmentación")
             col1, col2 = st.columns(2)
             with col1:
                 st.image(img, caption="Imagen original", use_container_width=False, width=420)
             with col2:
                 try:
-                    with st.spinner("Generando segmentacion de la lesion en mama..."):
+                    with st.spinner("Generando segmentación de la lesión en mama..."):
                         overlay_img = apply_segmentation_overlay(img, mama_seg_model)
                     st.image(overlay_img, caption="Segmentación", use_container_width=False, width=420)
                 except Exception as e:
-                    st.error(f"El modelo de segmentacion de mama no pudo generar la mascara: {e}")
+                    st.error(f"El modelo de segmentación de mama no pudo generar la máscara: {e}")
 
 st.markdown("<hr>", unsafe_allow_html=True)
 st.caption("Apoyo con IA. No reemplaza el criterio medico profesional.")
