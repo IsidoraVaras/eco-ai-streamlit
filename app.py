@@ -252,7 +252,7 @@ def is_ultrasound_image(pil_img: Image.Image, pos_threshold: float = 0.58, margi
 # ==============================
 # YOLO: identificacion + modelos
 # ==============================
-TYPE_MODEL_PATH = "modelo_identificacion_eco_best.pt"  # tipo de ecografia (mama / higado / rinon)
+TYPE_MODEL_PATH = "modelo_identificacion_eco_best.pt"  # Tipo de ecografia (mama / higado / rinon)
 
 # Modelos de clasificacion por organo
 ORGAN_MODELS: Dict[str, str] = {
@@ -261,8 +261,8 @@ ORGAN_MODELS: Dict[str, str] = {
     "mamaria": "clasificacion_mama.pt",  # debes colocar este .pt en la carpeta del app
 }
 
-# Modelo especifico de segmentacion de mama
-MAMA_SEG_MODEL_PATH = "segmentacion_mama.pt"  # modelo YOLO de segmentacion de lesiones de mama
+# Modelo especifico de Segmentacion de mama
+MAMA_SEG_MODEL_PATH = "Segmentacion_mama.pt"  # modelo YOLO de Segmentacion de lesiones de mama
 
 
 def _strip_accents(s: str) -> str:
@@ -304,7 +304,7 @@ def pretty_label(text: str) -> str:
 
 
 def apply_segmentation_overlay(pil_img: Image.Image, model: YOLO, color=(180, 70, 190), alpha: float = 0.45) -> Image.Image:
-    """Ejecuta un modelo YOLO de segmentacion y superpone la mascara sobre la ecografia.
+    """Ejecuta un modelo YOLO de Segmentacion y superpone la mascara sobre la ecografia.
 
     color: color RGB de la mascara (por defecto morado suave).
     alpha: nivel de transparencia de la mascara.
@@ -315,7 +315,7 @@ def apply_segmentation_overlay(pil_img: Image.Image, model: YOLO, color=(180, 70
     res = model(pil_img)[0]
     masks = getattr(res, "masks", None)
     if masks is None or getattr(masks, "data", None) is None:
-        raise RuntimeError("El modelo de segmentacion de mama no devolvio mascaras.")
+        raise RuntimeError("El modelo de Segmentacion de mama no devolvio mascaras.")
 
     mask_tensor = masks.data  # [N, H, W]
     if mask_tensor.ndim == 3:
@@ -359,12 +359,12 @@ for k, p in ORGAN_MODELS.items():
     except Exception as e:
         st.warning(f"No se pudo cargar el modelo '{k}': {p}\nDetalle: {e}")
 
-# Modelo de segmentacion de mama (opcional)
+# Modelo de Segmentacion de mama (opcional)
 try:
     mama_seg_model = load_yolo(MAMA_SEG_MODEL_PATH)
 except Exception as e:
     mama_seg_model = None
-    st.warning(f"No se pudo cargar el modelo de segmentacion de mama: {MAMA_SEG_MODEL_PATH}\nDetalle: {e}")
+    st.warning(f"No se pudo cargar el modelo de Segmentacion de mama: {MAMA_SEG_MODEL_PATH}\nDetalle: {e}")
 
 # ==============================
 # UI
@@ -436,12 +436,12 @@ if uploaded:
             if not force:
                 st.stop()
 
-        with st.spinner("Identificando tipo de ecografia..."):
+        with st.spinner("Identificando Tipo de ecografia..."):
             try:
                 _, raw_type, type_conf = predict_top1(type_model, img)
                 organ_key = map_type_name(raw_type)
             except Exception as e:
-                st.error(f"Error al identificar tipo de ecografia: {e}")
+                st.error(f"Error al identificar Tipo de ecografia: {e}")
                 st.stop()
 
         mdl = organ_loaded.get(organ_key)
@@ -453,7 +453,7 @@ if uploaded:
             st.stop()
 
         # Clasificacion por organo
-        with st.spinner("Clasificando categoría específica..."):
+        with st.spinner("Clasificando Categoria específica..."):
             try:
                 _, diag_name, diag_conf = predict_top1(mdl, img)
             except Exception as e:
@@ -465,35 +465,40 @@ if uploaded:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(
-                '<div class="metric-card"><div>Tipo de ecografía</div>'
+                '<div class="metric-card"><div>Tipo de ecografia</div>'
                 f'<h2 style="margin:6px 0">{pretty_label(organ_key)}</h2>'
                 f'<div>Confianza: {type_conf*100:.1f}%</div></div>'.replace('.', ','),
                 unsafe_allow_html=True,
             )
         with c2:
             st.markdown(
-                '<div class="metric-card"><div>Categoría</div>'
+                '<div class="metric-card"><div>Categoria</div>'
                 f'<h2 style="margin:6px 0">{pretty_label(diag_name)}</h2>'
                 f'<div>Confianza: {diag_conf*100:.1f}%</div></div>'.replace('.', ','),
                 unsafe_allow_html=True,
             )
 
-        # Flujo especifico para ecografia de mama: clasificacion + segmentacion
+                # Flujo especifico para ecografia de mama: clasificacion + segmentacion
         if organ_key == "mamaria" and mama_seg_model is not None:
-            st.markdown("### Clasificación y segmentación")
+            st.markdown("### Clasificacion y segmentacion")
             col1, col2 = st.columns(2)
             with col1:
                 st.image(img, caption="Imagen original", use_container_width=False, width=420)
             with col2:
                 try:
-                    with st.spinner("Generando segmentación de la lesión en mama..."):
+                    with st.spinner("Generando segmentacion de la lesion en mama..."):
                         overlay_img = apply_segmentation_overlay(img, mama_seg_model)
-                    st.image(overlay_img, caption="Segmentación", use_container_width=False, width=420)
-                except Exception as e:
-                    st.error(f"El modelo de segmentación de mama no pudo generar la máscara: {e}")
-
+                    st.image(overlay_img, caption="Segmentacion", use_container_width=False, width=420)
+                except Exception:
+                    st.image(img, caption="Sin lesiones detectadas", use_container_width=False, width=420)
+                    st.caption("No se detectaron lesiones: imagen tratada como normal (sin mascara generada).")
 st.markdown("<hr>", unsafe_allow_html=True)
 st.caption("Apoyo con IA. No reemplaza el criterio medico profesional.")
+
+
+
+
+
 
 
 
